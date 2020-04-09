@@ -15,11 +15,10 @@ def proof_of_work(block):
     """
     block_string = json.dumps(block, sort_keys=True)
     proof = 0
-    while valid_proof(block_string, proof) is False:
-        print('Mining started')
+    while not valid_proof(block_string, proof):
+        # print('Mining started')
         proof += 1
-
-    print('Mining complete.')
+    # print('Mining complete.')
     # return a valid proof
     return proof
 
@@ -37,13 +36,11 @@ def valid_proof(block_string, proof):
     """
     guess = f'{block_string}{proof}'.encode()
     guess_hash = hashlib.sha256(guess).hexdigest()
-
-    return guess_hash[:3] == "000"
+    return guess_hash[:6] == "000000"
 
 
 if __name__ == '__main__':
     # What is the server address? IE `python3 miner.py https://server.com/api/`
-    #
     if len(sys.argv) > 1:
         node = sys.argv[1]
     else:
@@ -54,6 +51,8 @@ if __name__ == '__main__':
     id = f.read()
     print("ID is", id)
     f.close()
+
+    coins_mined = 0
 
     # Run forever until interrupted
     while True:
@@ -68,30 +67,19 @@ if __name__ == '__main__':
             break
 
         # TODO: Get the block from `data` and use it to look for a new proof
-        new_block = data['last_block']
-
-        new_proof = proof_of_work(new_block)
-
-        print(f'Proof found: {new_proof}')
+        new_proof = proof_of_work(data['last_block'])
 
         # When found, POST it to the server {"proof": new_proof, "id": id}
         post_data = {"proof": new_proof, "id": id}
 
         r = requests.post(url=node + "/mine", json=post_data)
-
-        try:
-            data = r.json()
-        except ValueError:
-            print("Error: Non-json response")
-            print("Response returned:")
-            print(r)
-            break
+        data = r.json()
 
         # TODO: If the server responds with a 'message' 'New Block Forged'
         # add 1 to the number of coins mined and print it.  Otherwise,
         # print the message from the server.
-        coins_mined = 0
-        if data.message == "New Block Forged":
+        if data["message"] == "New Block Forged":
             coins_mined += 1
+            print(f"Total coins mined: {coins_mined}")
         else:
-            print(data.message)
+            print(data["message"])
