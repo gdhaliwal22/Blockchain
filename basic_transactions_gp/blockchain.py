@@ -10,7 +10,7 @@ class Blockchain(object):
         self.chain = []
         self.current_transactions = []
         # Create the genesis block
-        self.new_block(previous_hash="I'm a teapot.", proof=100)
+        self.new_block(previous_hash=1, proof=100)
 
     def new_block(self, proof, previous_hash=None):
         """
@@ -27,12 +27,20 @@ class Blockchain(object):
         :param previous_hash: (Optional) <str> Hash of previous Block
         :return: <dict> New Block
         """
+        if len(self.chain) > 0:
+            block_string = json.dumps(self.last_block, sort_keys=True)
+            guess = f'{block_string}{proof}'.encode()
+            current_hash = hashlib.sha256(guess).hexdigest()
+        else:
+            current_hash = ""
+
         block = {
             'index': len(self.chain) + 1,
             'timestamp': time(),
             'transactions': self.current_transactions,
             'proof': proof,
             'previous_hash': previous_hash or self.hash(self.chain[-1]),
+            'hash': current_hash,
         }
 
         # Reset the current list of transactions
@@ -41,6 +49,22 @@ class Blockchain(object):
         self.chain.append(block)
         # Return the new block
         return block
+
+    def new_transaction(self, sender, recipient, amount):
+        """
+        Creates a new transaction to go into the next mined Block
+        :param sender: <str> Address of the Recipient
+        :param recipient: <str> Address of the Recipient
+        :param amount: <int> Amount
+        :return: <int> The index of the Block that will hold this transaction
+        """
+        self.current_transactions.append({
+            'sender': sender,
+            'recipient': recipient,
+            'amount': amount
+        })
+
+        return self.last_block['index'] + 1
 
     def hash(self, block):
         """
@@ -107,28 +131,57 @@ print(blockchain.chain)
 print(blockchain.hash(blockchain.last_block))
 
 
+@app.route('/transaction/new', methods=['POST'])
+def receive_new_transaction():
+    #     * use `request.get_json()` to pull the data out of the POST
+    # * check that 'sender', 'recipient', and 'amount' are present
+    #     * return a 400 error using `jsonify(response)` with a 'message'
+    # * upon success, return a 'message' indicating index of the block
+    #   containing the transaction
+    data = request.get_json()
+
+    required = ['sender', 'recipient', 'amount']
+    if not all(k in data for k in required):
+        # TODO Better error messaging
+        return "Missing values", 400
+
+    index = blockchain.new_transaction(data['sender'],
+                                       data['recipient'],
+                                       data['amount'])
+
+    response = {'message': f'Transactions will be included in block {index}'}
+    return jsonify(response), 200
+
+
 @app.route('/mine', methods=['POST'])
-def mine(self):
+def mine():
 
     data = request.get_json()
     # TODO: validate data to be a valid hash
-    proof = data.proof
-    last_block = blockchain.last_block
+    if 'proof' not in data or 'id' not in data:
+        response = {'message': 'Must contain "proof" and "id"'}
+        return jsonify(response), 400
 
+    proof = data['proof']
+
+    # Determine if the proof is valid
+    last_block = blockchain.last_block
     last_block_string = json.dumps(last_block, sort_keys=True)
 
     if blockchain.valid_proof(last_block_string, proof):
-        previous_hash = blockchain.hash(blockchain.last_block)
-        new_block = blockchain.new_block(proof, previous_hash)
-
+        # Forge the new Block by adding it to the chain with the proof
+        previous_hash = blockchain.hash(last_block)
+        block = blockchain.new_block(proof, previous_hash)
         response = {
-            "block": new_block
+            'message': "New Block Forged",
+            'index': block['index'],
+            'transactions': block['transactions'],
+            'proof': block['proof'],
+            'previous_hash': block['previous_hash'],
         }
         return jsonify(response), 200
     else:
-        response: {
-            "message": "Invalid Proof"
-        }
+        response = {'message': 'Invalid proof'}
         return jsonify(response), 200
 
 
@@ -143,8 +196,7 @@ def full_chain():
 
 
 @app.route('/last_block', methods=['GET'])
-def return_last_block():
-    # return blockchain.chain[-1]
+def get_last_block():
     response = {
         'last_block': blockchain.last_block
     }
